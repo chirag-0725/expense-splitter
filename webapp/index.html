@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Splitwise-style Expense Splitter</title>
+<style>
+  :root{
+    --bg:#F7F5F1;
+    --surface:#FFFFFF;
+    --ink:#1C2321;
+    --ink-soft:#5B645F;
+    --accent:#2F6F5E;
+    --accent-ink:#F7F5F1;
+    --owed:#2F6F5E;
+    --owes:#A8431F;
+    --line:#E4E0D8;
+    --radius:6px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+    background:var(--bg);
+    color:var(--ink);
+  }
+  .topbar{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:14px 24px;border-bottom:1px solid var(--line);background:var(--surface);
+  }
+  .topbar h1{font-size:18px;margin:0;font-weight:700;letter-spacing:-0.01em;}
+  .topbar .meta{font-size:13px;color:var(--ink-soft);display:flex;gap:14px;align-items:center;}
+  .topbar input[type=text]{width:220px;}
+  input,select,button,textarea{
+    font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:var(--radius);
+    background:var(--surface);color:var(--ink);
+  }
+  button{cursor:pointer;background:var(--ink);color:var(--surface);border-color:var(--ink);}
+  button.secondary{background:var(--surface);color:var(--ink);border-color:var(--line);}
+  button:hover{opacity:0.88;}
+  button:disabled{opacity:0.4;cursor:not-allowed;}
+  .layout{display:flex;min-height:calc(100vh - 54px);}
+  .sidebar{
+    width:270px;border-right:1px solid var(--line);padding:18px;flex-shrink:0;
+    background:var(--surface);
+  }
+  .sidebar h2{font-size:12px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-soft);margin:0 0 10px;}
+  .group-item{
+    padding:10px 10px;border-radius:var(--radius);cursor:pointer;margin-bottom:4px;
+    font-size:14px;border:1px solid transparent;
+  }
+  .group-item:hover{background:var(--bg);}
+  .group-item.active{background:var(--accent);color:var(--accent-ink);}
+  .main{flex:1;padding:24px 32px;max-width:760px;}
+  .card{
+    background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    padding:20px;margin-bottom:20px;
+  }
+  .card h3{margin:0 0 14px;font-size:15px;}
+  .row{display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap;}
+  .row > *{flex:1;min-width:140px;}
+  .row.tight > *{flex:none;min-width:0;}
+  label{display:block;font-size:12px;color:var(--ink-soft);margin-bottom:4px;}
+  .field{margin-bottom:10px;}
+  .auth-shell{max-width:380px;margin:60px auto;}
+  .tabs{display:flex;gap:4px;margin-bottom:16px;}
+  .tabs button{flex:1;background:var(--surface);color:var(--ink-soft);border-color:var(--line);}
+  .tabs button.active{background:var(--ink);color:var(--surface);border-color:var(--ink);}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th,td{text-align:left;padding:7px 4px;border-bottom:1px solid var(--line);}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;}
+  .pos{color:var(--owed);font-weight:600;}
+  .neg{color:var(--owes);font-weight:600;}
+  .muted{color:var(--ink-soft);font-size:13px;}
+  .error{color:var(--owes);font-size:13px;margin-top:8px;}
+  .hint{font-size:12px;color:var(--ink-soft);margin-top:4px;}
+  .split-fields{display:none;}
+  .split-fields.active{display:block;}
+  a.link{color:var(--accent);text-decoration:none;font-size:13px;cursor:pointer;}
+  .empty{color:var(--ink-soft);font-size:13px;padding:20px 0;text-align:center;}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>Expense Splitter</h1>
+  <div class="meta">
+    <span id="whoami"></span>
+    <input type="text" id="apiBase" title="API base URL">
+    <button class="secondary" id="logoutBtn" style="display:none;">Log out</button>
+  </div>
+</div>
+
+<div id="authView" class="auth-shell" style="display:none;">
+  <div class="tabs">
+    <button id="tabLogin" class="active">Log in</button>
+    <button id="tabRegister">Register</button>
+  </div>
+
+  <div class="card" id="loginCard">
+    <h3>Log in</h3>
+    <div class="field"><label>Username</label><input type="text" id="loginUsername"></div>
+    <div class="field"><label>Password</label><input type="password" id="loginPassword"></div>
+    <button id="loginBtn" style="width:100%;">Log in</button>
+    <div class="error" id="loginError"></div>
+  </div>
+
+  <div class="card" id="registerCard" style="display:none;">
+    <h3>Register</h3>
+    <div class="field"><label>Username</label><input type="text" id="regUsername"></div>
+    <div class="field"><label>Email</label><input type="text" id="regEmail"></div>
+    <div class="field"><label>Password</label><input type="password" id="regPassword"></div>
+    <button id="registerBtn" style="width:100%;">Create account</button>
+    <div class="error" id="registerError"></div>
+  </div>
+</div>
+
+<div id="appView" class="layout" style="display:none;">
+  <div class="sidebar">
+    <h2>Your groups</h2>
+    <div id="groupList"></div>
+
+    <h2 style="margin-top:24px;">New group</h2>
+    <div class="field"><input type="text" id="newGroupName" placeholder="Group name"></div>
+    <div class="field"><input type="text" id="newGroupMembers" placeholder="friend names, comma separated (no account needed)"></div>
+    <button id="createGroupBtn" style="width:100%;">Create group</button>
+    <div class="error" id="groupError"></div>
+
+    <h2 style="margin-top:24px;">Your spending</h2>
+    <div class="field"><input type="month" id="reportMonth"></div>
+    <button class="secondary" id="viewReportBtn" style="width:100%;">View monthly report</button>
+  </div>
+
+  <div class="main" id="mainPanel">
+    <div class="empty">Select a group, or create one, to get started.</div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+const state = {
+  apiBase: localStorage.getItem('es_apiBase') || 'http://localhost:8081',
+  token: localStorage.getItem('es_token') || null,
+  username: localStorage.getItem('es_username') || null,
+  groups: [],
+  currentGroupId: null,
+};
+
+$('apiBase').value = state.apiBase;
+$('apiBase').addEventListener('change', () => {
+  state.apiBase = $('apiBase').value.trim().replace(/\/$/, '');
+  localStorage.setItem('es_apiBase', state.apiBase);
+});
+
+async function api(path, options = {}) {
+  const headers = Object.assign({ 'Content-Type': 'application/json' }, options.headers || {});
+  if (state.token) headers['Authorization'] = 'Bearer ' + state.token;
+  const res = await fetch(state.apiBase + path, { ...options, headers });
+  let body = null;
+  try { body = await res.json(); } catch (e) { /* no body */ }
+  if (!res.ok) {
+    const msg = (body && body.message) ? body.message : ('Request failed (' + res.status + ')');
+    throw new Error(msg);
+  }
+  return body;
+}
+
+function setSession(token, username) {
+  state.token = token;
+  state.username = username;
+  localStorage.setItem('es_token', token);
+  localStorage.setItem('es_username', username);
+  render();
+}
+
+function clearSession() {
+  state.token = null;
+  state.username = null;
+  localStorage.removeItem('es_token');
+  localStorage.removeItem('es_username');
+  render();
+}
+
+// ---- Auth view ----
+$('tabLogin').addEventListener('click', () => {
+  $('tabLogin').classList.add('active'); $('tabRegister').classList.remove('active');
+  $('loginCard').style.display = 'block'; $('registerCard').style.display = 'none';
+});
+$('tabRegister').addEventListener('click', () => {
+  $('tabRegister').classList.add('active'); $('tabLogin').classList.remove('active');
+  $('registerCard').style.display = 'block'; $('loginCard').style.display = 'none';
+});
+
+$('loginBtn').addEventListener('click', async () => {
+  $('loginError').textContent = '';
+  try {
+    const body = await api('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ username: $('loginUsername').value, password: $('loginPassword').value }),
+    });
+    setSession(body.token, body.username);
+  } catch (e) { $('loginError').textContent = e.message; }
+});
+
+$('registerBtn').addEventListener('click', async () => {
+  $('registerError').textContent = '';
+  try {
+    const body = await api('/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({
+        username: $('regUsername').value,
+        email: $('regEmail').value,
+        password: $('regPassword').value,
+      }),
+    });
+    setSession(body.token, body.username);
+  } catch (e) { $('registerError').textContent = e.message; }
+});
+
+$('logoutBtn').addEventListener('click', clearSession);
+
+// ---- Groups ----
+$('createGroupBtn').addEventListener('click', async () => {
+  $('groupError').textContent = '';
+  const name = $('newGroupName').value.trim();
+  const members = $('newGroupMembers').value.split(',').map(s => s.trim()).filter(Boolean);
+  if (!name) { $('groupError').textContent = 'Group name is required.'; return; }
+  try {
+    const group = await api('/api/groups', {
+      method: 'POST',
+      body: JSON.stringify({ name, members }),
+    });
+    $('newGroupName').value = ''; $('newGroupMembers').value = '';
+    await loadGroups();
+    selectGroup(group.id);
+  } catch (e) { $('groupError').textContent = e.message; }
+});
+
+async function loadGroups() {
+  state.groups = await api('/api/groups');
+  const list = $('groupList');
+  list.innerHTML = '';
+  if (state.groups.length === 0) {
+    list.innerHTML = '<div class="muted">No groups yet.</div>';
+  }
+  state.groups.forEach(g => {
+    const div = document.createElement('div');
+    div.className = 'group-item' + (g.id === state.currentGroupId ? ' active' : '');
+    div.textContent = g.name;
+    div.addEventListener('click', () => selectGroup(g.id));
+    list.appendChild(div);
+  });
+}
+
+function selectGroup(id) {
+  state.currentGroupId = id;
+  loadGroups();
+  renderGroupDetail(id);
+}
+
+// ---- Monthly report ----
+$('viewReportBtn').addEventListener('click', () => {
+  state.currentGroupId = null;
+  loadGroups();
+  renderMonthlyReport($('reportMonth').value);
+});
+
+async function renderMonthlyReport(monthValue) {
+  const main = $('mainPanel');
+  main.innerHTML = '<div class="empty">Loading...</div>';
+
+  const query = monthValue ? ('?month=' + monthValue) : '';
+  const report = await api('/api/reports/monthly' + query);
+
+  const netCls = report.net > 0 ? 'pos' : (report.net < 0 ? 'neg' : '');
+  const netLabel = report.net > 0 ? 'net owed to you' : (report.net < 0 ? 'net you owe' : 'settled up');
+
+  main.innerHTML = `
+    <div class="card">
+      <h3>Spending for ${report.month}</h3>
+      <table>
+        <tr><td>Total you paid</td><td class="num">${report.totalPaid.toFixed(2)}</td></tr>
+        <tr><td>Your total share</td><td class="num">${report.totalShare.toFixed(2)}</td></tr>
+        <tr><td>${netLabel}</td><td class="num ${netCls}">${Math.abs(report.net).toFixed(2)}</td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <h3>By group</h3>
+      <table>
+        <thead><tr><th>Group</th><th class="num">You paid</th><th class="num">Your share</th></tr></thead>
+        <tbody id="reportGroupRows"></tbody>
+      </table>
+    </div>
+  `;
+
+  const rows = $('reportGroupRows');
+  if (report.groups.length === 0) {
+    rows.innerHTML = '<tr><td colspan="3" class="muted">No activity this month.</td></tr>';
+  }
+  report.groups.forEach(g => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${g.groupName}</td><td class="num">${g.paid.toFixed(2)}</td><td class="num">${g.share.toFixed(2)}</td>`;
+    rows.appendChild(tr);
+  });
+}
+
+async function renderGroupDetail(groupId) {
+  const group = state.groups.find(g => g.id === groupId);
+  const main = $('mainPanel');
+  main.innerHTML = '<div class="empty">Loading...</div>';
+
+  const [expenses, balances] = await Promise.all([
+    api('/api/groups/' + groupId + '/expenses'),
+    api('/api/groups/' + groupId + '/balances'),
+  ]);
+
+  main.innerHTML = `
+    <div class="card">
+      <h3>${group ? group.name : 'Group'}</h3>
+      <div class="muted" id="memberList">Members: ${group ? group.members.join(', ') : ''}</div>
+      <div class="row" style="margin-top:12px;">
+        <input type="text" id="newMemberUsername" placeholder="friend's name (account optional)">
+        <button class="secondary" id="addMemberBtn" style="flex:none;">Add member</button>
+      </div>
+      <div class="error" id="memberError"></div>
+    </div>
+
+    <div class="card">
+      <h3>Add an expense</h3>
+      <div class="row">
+        <div><label>Description</label><input type="text" id="expDesc"></div>
+        <div><label>Amount</label><input type="number" step="0.01" id="expAmount"></div>
+      </div>
+      <div class="field">
+        <label>Paid by (leave blank for yourself)</label>
+        <input type="text" id="expPaidBy" placeholder="${state.username}">
+      </div>
+      <div class="field">
+        <label>Split type</label>
+        <select id="expSplitType">
+          <option value="EQUAL">Equal</option>
+          <option value="PERCENTAGE">Percentage</option>
+          <option value="CUSTOM">Custom amounts</option>
+        </select>
+      </div>
+      <div class="field split-fields active" id="equalFields">
+        <label>Participants (blank = all members)</label>
+        <input type="text" id="expParticipants" placeholder="e.g. alice, bob">
+      </div>
+      <div class="field split-fields" id="percentFields">
+        <label>Percentages, e.g. alice:40, bob:60</label>
+        <input type="text" id="expPercentages">
+      </div>
+      <div class="field split-fields" id="customFields">
+        <label>Custom amounts, e.g. alice:10.00, bob:15.00</label>
+        <input type="text" id="expCustom">
+      </div>
+      <button id="addExpenseBtn">Add expense</button>
+      <div class="error" id="expenseError"></div>
+    </div>
+
+    <div class="card">
+      <h3>Expenses</h3>
+      <table>
+        <thead><tr><th>Description</th><th>Paid by</th><th class="num">Amount</th><th>Split</th></tr></thead>
+        <tbody id="expenseRows"></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>Balances</h3>
+      <table>
+        <thead><tr><th>Member</th><th class="num">Net</th></tr></thead>
+        <tbody id="balanceRows"></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>Settlement plan</h3>
+      <button class="secondary" id="loadSettlementBtn">Compute settlement</button>
+      <table style="margin-top:10px;">
+        <tbody id="settlementRows"></tbody>
+      </table>
+    </div>
+  `;
+
+  const rows = $('expenseRows');
+  expenses.forEach(e => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${e.description}</td><td>${e.paidBy}</td><td class="num">${e.amount.toFixed(2)}</td><td>${e.splitType}</td>`;
+    rows.appendChild(tr);
+  });
+  if (expenses.length === 0) rows.innerHTML = '<tr><td colspan="4" class="muted">No expenses yet.</td></tr>';
+
+  const balRows = $('balanceRows');
+  balances.forEach(b => {
+    const cls = b.netBalance > 0 ? 'pos' : (b.netBalance < 0 ? 'neg' : '');
+    const label = b.netBalance > 0 ? 'is owed' : (b.netBalance < 0 ? 'owes' : 'settled up');
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${b.name}</td><td class="num ${cls}">${label} ${Math.abs(b.netBalance).toFixed(2)}</td>`;
+    balRows.appendChild(tr);
+  });
+
+  $('addMemberBtn').addEventListener('click', async () => {
+    $('memberError').textContent = '';
+    const name = $('newMemberUsername').value.trim();
+    if (!name) return;
+    try {
+      const updated = await api('/api/groups/' + groupId + '/members', {
+        method: 'POST',
+        body: JSON.stringify({ name }),
+      });
+      $('newMemberUsername').value = '';
+      $('memberList').textContent = 'Members: ' + updated.members.join(', ');
+    } catch (e) { $('memberError').textContent = e.message; }
+  });
+
+  $('expSplitType').addEventListener('change', (ev) => {
+    document.querySelectorAll('.split-fields').forEach(el => el.classList.remove('active'));
+    const map = { EQUAL: 'equalFields', PERCENTAGE: 'percentFields', CUSTOM: 'customFields' };
+    $(map[ev.target.value]).classList.add('active');
+  });
+
+  $('addExpenseBtn').addEventListener('click', async () => {
+    $('expenseError').textContent = '';
+    const splitType = $('expSplitType').value;
+    const payload = {
+      description: $('expDesc').value.trim(),
+      amount: parseFloat($('expAmount').value),
+      splitType,
+    };
+    const paidBy = $('expPaidBy').value.trim();
+    if (paidBy) payload.paidByName = paidBy;
+
+    const parsePairs = (str) => {
+      const out = {};
+      str.split(',').forEach(part => {
+        const [k, v] = part.split(':').map(s => s && s.trim());
+        if (k && v) out[k] = parseFloat(v);
+      });
+      return out;
+    };
+
+    if (splitType === 'EQUAL') {
+      const parts = $('expParticipants').value.split(',').map(s => s.trim()).filter(Boolean);
+      if (parts.length) payload.participants = parts;
+    } else if (splitType === 'PERCENTAGE') {
+      payload.percentages = parsePairs($('expPercentages').value);
+    } else if (splitType === 'CUSTOM') {
+      payload.customShares = parsePairs($('expCustom').value);
+    }
+
+    try {
+      await api('/api/groups/' + groupId + '/expenses', { method: 'POST', body: JSON.stringify(payload) });
+      renderGroupDetail(groupId);
+    } catch (e) { $('expenseError').textContent = e.message; }
+  });
+
+  $('loadSettlementBtn').addEventListener('click', async () => {
+    const plan = await api('/api/groups/' + groupId + '/settlements');
+    const rows = $('settlementRows');
+    rows.innerHTML = '';
+    if (plan.length === 0) {
+      rows.innerHTML = '<tr><td class="muted">Everyone is settled up.</td></tr>';
+    }
+    plan.forEach(t => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${t.fromName} pays ${t.toName} <strong>${t.amount.toFixed(2)}</strong></td>`;
+      rows.appendChild(tr);
+    });
+  });
+}
+
+function render() {
+  if (state.token) {
+    $('authView').style.display = 'none';
+    $('appView').style.display = 'flex';
+    $('logoutBtn').style.display = 'inline-block';
+    $('whoami').textContent = 'Logged in as ' + state.username;
+    if (!$('reportMonth').value) {
+      const now = new Date();
+      $('reportMonth').value = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+    }
+    loadGroups();
+  } else {
+    $('authView').style.display = 'block';
+    $('appView').style.display = 'none';
+    $('logoutBtn').style.display = 'none';
+    $('whoami').textContent = '';
+  }
+}
+
+render();
+</script>
+</body>
+</html>

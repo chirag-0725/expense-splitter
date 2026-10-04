@@ -1,0 +1,33 @@
+server:
+  port: ${SERVER_PORT:8081}
+
+spring:
+  application:
+    name: expense-splitter
+  datasource:
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:expense_splitter}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&createDatabaseIfNotExist=true
+    username: ${DB_USERNAME:expense_user}
+    password: ${DB_PASSWORD:expense_pass}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 10
+      connection-timeout: 20000
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+        format_sql: false
+
+app:
+  jwt:
+    # 256-bit+ base64 secret. Override with an env var in real deployments.
+    secret: ${JWT_SECRET:bXktc3VwZXItc2VjcmV0LWtleS1mb3ItZXhwZW5zZS1zcGxpdHRlci1hcHAtY2hhbmdlLW1lLWluLXByb2R1Y3Rpb24=}
+    expiration-ms: ${JWT_EXPIRATION_MS:86400000}
+
+logging:
+  level:
+    com.example.expensesplitter: INFO
